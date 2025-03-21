@@ -1,7 +1,17 @@
 use std::{
     sync::{mpsc, Arc, Mutex},
     thread,
+    fmt,
 };
+
+#[derive(Debug)]
+pub struct PoolCreationError;
+
+impl fmt::Display for PoolCreationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Unable to create ThreadPool with 0 threads")
+    }
+}
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -11,20 +21,22 @@ pub struct ThreadPool {
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
 impl ThreadPool {
-    pub fn new(size: usize) -> ThreadPool {
-        assert!(size > 0);
-
-        let (sender, receiver) = mpsc::channel();
-
-        let receiver = Arc::new(Mutex::new(receiver));
-
-        let mut workers = Vec::with_capacity(size);
-
-        for id in 0..size {
-            workers.push(Worker::new(id, Arc::clone(&receiver)));
+    pub fn build(size: usize) -> Result<ThreadPool, PoolCreationError> {
+        if size < 1 {
+            Err(PoolCreationError)
+        } else {
+            let (sender, receiver) = mpsc::channel();
+    
+            let receiver = Arc::new(Mutex::new(receiver));
+    
+            let mut workers = Vec::with_capacity(size);
+    
+            for id in 0..size {
+                workers.push(Worker::new(id, Arc::clone(&receiver)));
+            }
+    
+            Ok(ThreadPool { workers, sender })
         }
-
-        ThreadPool { workers, sender }
     }
 
     pub fn execute<F>(&self, f: F)
